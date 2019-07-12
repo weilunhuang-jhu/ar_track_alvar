@@ -76,6 +76,7 @@ double max_track_error;
 std::string cam_image_topic; 
 std::string cam_info_topic; 
 std::string output_frame;
+std::string by;//marker detected by "left" or "right" camera
 int n_bundles = 0;   
 
 void GetMultiMarkerPoses(IplImage *image);
@@ -125,7 +126,7 @@ void makeMarkerMsgs(int type, int id, Pose &p, sensor_msgs::ImageConstPtr image_
   if(type==MAIN_MARKER){
     std::string markerFrame = "ar_marker_";
     std::stringstream out;
-    out << id;
+    out <<id<<"_"<<by;
     std::string id_string = out.str();
     markerFrame += id_string;
     tf::StampedTransform camToMarker (t, image_msg->header.stamp, image_msg->header.frame_id, markerFrame.c_str());
@@ -296,7 +297,8 @@ int main(int argc, char *argv[])
   cam_image_topic = argv[4];
   cam_info_topic = argv[5];
   output_frame = argv[6];
-  int n_args_before_list = 7;
+  by=argv[7];//debug
+  int n_args_before_list = 8;//debug
   n_bundles = argc - n_args_before_list;
 
   marker_detector.SetMarkerSize(marker_size);
