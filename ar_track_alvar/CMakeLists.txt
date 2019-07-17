@@ -141,6 +141,10 @@ add_executable(findMarkerBundlesNoKinect nodes/FindMarkerBundlesNoKinect.cpp)
 target_link_libraries(findMarkerBundlesNoKinect ar_track_alvar ${catkin_LIBRARIES})
 add_dependencies(findMarkerBundlesNoKinect ${PROJECT_NAME}_gencpp ${GENCPP_DEPS})
 
+add_executable(findMarkerBundlesNoKinectStereo nodes/FindMarkerBundlesNoKinectStereo.cpp)
+target_link_libraries(findMarkerBundlesNoKinectStereo ar_track_alvar ${catkin_LIBRARIES})
+add_dependencies(findMarkerBundlesNoKinectStereo ${PROJECT_NAME}_gencpp ${GENCPP_DEPS})
+
 add_executable(createMarker src/SampleMarkerCreator.cpp)
 target_link_libraries(createMarker ar_track_alvar ${catkin_LIBRARIES})
 add_dependencies(createMarker ${PROJECT_NAME}_gencpp ${GENCPP_DEPS})
