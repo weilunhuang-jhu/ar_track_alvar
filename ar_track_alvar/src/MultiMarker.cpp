@@ -301,12 +301,14 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	for (size_t i=0; i<marker_status.size(); i++) {
 		if (marker_status[i] > 0) marker_status[i]=1;
 	}
-
+	//debug, poses for special case, to fix quaternions
+	vector<Pose> poses_all_markers;
 	// For every detected marker
 	for (MarkerIterator &i = begin.reset(); i != end; ++i)
 	{
 		const Marker* marker = *i;
 		int id = marker->GetId();
+		
 		int index = get_id_index(id);
 		if (index < 0) continue;
 		//debug
@@ -315,7 +317,10 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		vector<PointDouble>  image_points_per_marker;
 
 		// But only if we have corresponding points in the pointcloud
-		if (marker_status[index] > 0) {
+		//debug
+		if (marker_status[index]==2) std::cout<<"====================duplicate marker==================="<<std::endl;
+		if (marker_status[index] > 0 &&marker_status[index]!=2)//debug
+		{
 			for(size_t j = 0; j < marker->marker_corners.size(); ++j)
 			{
 				CvPoint3D64f Xnew = pointcloud[pointcloud_index(id, (int)j)];
@@ -337,10 +342,10 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 			cam->CalcExteriorOrientation(world_points_per_marker, image_points_per_marker, &rot_mat_per_marker, &tra_mat_per_marker);
 			pose_per_marker.SetRodriques(&rot_mat_per_marker);
 			pose_per_marker.SetTranslation(&tra_mat_per_marker);
-			std:cout<<"id:"<<id<<std::endl;
-			std::cout<<"x: "<<pose_per_marker.translation[0]<<std::endl;
-			std::cout<<"y: "<<pose_per_marker.translation[1]<<std::endl;
-			std::cout<<"z: "<<pose_per_marker.translation[2]<<std::endl;
+			poses_all_markers.push_back(pose_per_marker);
+//			std:cout<<"id:"<<id<<std::endl;
+//			std::cout<<"rotation:"<<std::endl;
+//			std::cout<<pose_per_marker.quaternion[0]<<" "<<pose_per_marker.quaternion[1]<<" "<<pose_per_marker.quaternion[2]<<" "<<pose_per_marker.quaternion[3]<<" "<<std::endl;
 		}
 	}
 	//debug
@@ -354,11 +359,25 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	cam->CalcExteriorOrientation(world_points, image_points, &rot_mat, &tra_mat);
 	pose.SetRodriques(&rot_mat);
 	pose.SetTranslation(&tra_mat);
+	//debug, check z value
+	if (pose.translation[2]<0)
+	{
+		std::cout<<"!!!!!!!!!!!!!!!!!!!!watch out special case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<std::endl;
+		for (int axis=0; axis<3; axis++) pose.translation[axis]*=(-1.0);
+		//clear quaternions, calculate average quaternion from all markers
+		for (int axis=0; axis<4; axis++)
+		{
+			pose.quaternion[axis]=0;
+			for (int poseId=0; poseId<poses_all_markers.size(); poseId++)
+			{
+				pose.quaternion[axis]+=poses_all_markers[poseId].quaternion[axis];
+			}
+			pose.quaternion[axis]/=poses_all_markers.size();
+		}
+	}
 	//debug
-	std::cout<<"bundle pose:"<<std::endl;
-	std::cout<<"x: "<<pose.translation[0]<<std::endl;
-	std::cout<<"y: "<<pose.translation[1]<<std::endl;
-	std::cout<<"z: "<<pose.translation[2]<<std::endl;
+	//std::cout<<"bundle pose:"<<std::endl;
+	//std::cout<<pose.quaternion[0]<<" "<<pose.quaternion[1]<<" "<<pose.quaternion[2]<<" "<<pose.quaternion[3]<<" "<<std::endl;
 	return error;
 }
 

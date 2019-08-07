@@ -689,6 +689,9 @@ void Camera::CalcExteriorOrientation(vector<CvPoint3D64f>& pw, vector<PointDoubl
 
 	cvZero(tra);
 	//cvmodFindExtrinsicCameraParams2(&world_mat, &image_mat, &calib_K, &calib_D, rodriques, tra, error);
+	//debug
+	//std::cout<<"cv version:"<<CV_VERSION<<std::endl;
+	//cv::solvePnPRansac(&world_mat, &image_mat, &calib_K, &calib_D, rodriques, tra);
 	cvFindExtrinsicCameraParams2(&world_mat, &image_mat, &calib_K, &calib_D, rodriques, tra);
 	
 	delete[] world_pts;

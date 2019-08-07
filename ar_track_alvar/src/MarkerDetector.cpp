@@ -113,6 +113,8 @@ namespace alvar {
 			for (size_t ii=0; ii<_track_markers_size(); ii++) {
 				Marker *mn = _track_markers_at(ii);
 				if (mn->GetError(Marker::DECODE_ERROR|Marker::MARGIN_ERROR) > 0) continue; // We track only perfectly decoded markers
+				//debug
+				//std::cout<<"=============marker being tracked:"<<mn->GetId()<<" ==============="<<std::endl;
 				int track_i=-1;
 				int track_orientation=0;
 				double track_error=1e200;
@@ -148,7 +150,9 @@ namespace alvar {
             bool db = mn->DecodeContent(&orientation); 
 			if (ub && db &&
 				(mn->GetError(Marker::MARGIN_ERROR | Marker::DECODE_ERROR) <= max_new_marker_error))
-			{
+			{	
+				//debug
+				//std::cout<<"less than max new marker error!!!!!!!!!!!!!!!!"<<std::endl;
 				if (map_edge_length.find(mn->GetId()) != map_edge_length.end()) {
 					mn->SetMarkerSize(map_edge_length[mn->GetId()], res, margin);
 				}
