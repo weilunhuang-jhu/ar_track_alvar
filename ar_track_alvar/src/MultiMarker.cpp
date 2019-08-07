@@ -309,6 +309,10 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		int id = marker->GetId();
 		int index = get_id_index(id);
 		if (index < 0) continue;
+		//debug
+		Pose pose_per_marker;
+		vector<CvPoint3D64f> world_points_per_marker;
+		vector<PointDouble>  image_points_per_marker;
 
 		// But only if we have corresponding points in the pointcloud
 		if (marker_status[index] > 0) {
@@ -318,11 +322,29 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 				world_points.push_back(Xnew);
 				image_points.push_back(marker->marker_corners_img.at(j));
 				if (image) cvCircle(image, cvPoint(int(marker->marker_corners_img[j].x), int(marker->marker_corners_img[j].y)), 3, CV_RGB(0,255,0));
+				//debug
+				world_points_per_marker.push_back(Xnew);
+				image_points_per_marker.push_back(marker->marker_corners_img.at(j));
 			}
 			marker_status[index] = 2; // Used for tracking
 		}
+		//debug
+		double rod_per_marker[3], tra_per_marker[3];
+		CvMat rot_mat_per_marker = cvMat(3, 1,CV_64F, rod_per_marker);
+		CvMat tra_mat_per_marker = cvMat(3, 1,CV_64F, tra_per_marker);
+		if (world_points_per_marker.size()>3)
+		{
+			cam->CalcExteriorOrientation(world_points_per_marker, image_points_per_marker, &rot_mat_per_marker, &tra_mat_per_marker);
+			pose_per_marker.SetRodriques(&rot_mat_per_marker);
+			pose_per_marker.SetTranslation(&tra_mat_per_marker);
+			std:cout<<"id:"<<id<<std::endl;
+			std::cout<<"x: "<<pose_per_marker.translation[0]<<std::endl;
+			std::cout<<"y: "<<pose_per_marker.translation[1]<<std::endl;
+			std::cout<<"z: "<<pose_per_marker.translation[2]<<std::endl;
+		}
 	}
-
+	//debug
+	std::cout<<"num of points to calc:"<<world_points.size()<<std::endl;
 	if (world_points.size() < 4) return -1;
 
 	double rod[3], tra[3];
@@ -332,6 +354,11 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	cam->CalcExteriorOrientation(world_points, image_points, &rot_mat, &tra_mat);
 	pose.SetRodriques(&rot_mat);
 	pose.SetTranslation(&tra_mat);
+	//debug
+	std::cout<<"bundle pose:"<<std::endl;
+	std::cout<<"x: "<<pose.translation[0]<<std::endl;
+	std::cout<<"y: "<<pose.translation[1]<<std::endl;
+	std::cout<<"z: "<<pose.translation[2]<<std::endl;
 	return error;
 }
 
