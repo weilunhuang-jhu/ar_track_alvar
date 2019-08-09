@@ -348,22 +348,6 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	}
 	std::cout<<"-----"<<poses_all_markers.size()<<" of makers detected------"<<std::endl;
 
-	//find average pose
-	Pose average_pose;
-	//translation
-	for (int i=0; i<3; i++)
-	{
-		for(int j=0; j<poses_all_markers.size(); j++) average_pose.translation[i]+=poses_all_markers[j].translation[i];
-		average_pose.translation[i]/=poses_all_markers.size();
-	}
-	//quaternion
-	for (int i=0; i<4; i++)
-	{
-		//make quaternion to all zeros first
-		average_pose.quaternion[i]=0;
-		for(int j=0; j<poses_all_markers.size(); j++) average_pose.quaternion[i]+=poses_all_markers[j].quaternion[i];
-		average_pose.quaternion[i]/=poses_all_markers.size();
-	}
 	
 	//record bad detection
 	double trans_radius=5;
@@ -373,6 +357,40 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	outlier_status.resize(poses_all_markers.size());
 	while(!done)
 	{
+		//find average pose of all markers to use
+		Pose average_pose;
+		int marker_to_use=0;
+		//translation
+		for (int i=0; i<3; i++)
+		{
+			//make translation to all zeros first
+			average_pose.translation[i]=0;
+			for(int j=0; j<poses_all_markers.size(); j++)
+			{
+				if (outlier_status[j]==0)
+					{
+						average_pose.translation[i]+=poses_all_markers[j].translation[i];
+						if(i==0) marker_to_use++;
+					}
+			}
+			average_pose.translation[i]/=marker_to_use;
+		}
+		//quaternion
+		for (int i=0; i<4; i++)
+		{
+			//make quaternion to all zeros first
+			average_pose.quaternion[i]=0;
+			for(int j=0; j<poses_all_markers.size(); j++)
+			{	
+				if (outlier_status[j]==0) average_pose.quaternion[i]+=poses_all_markers[j].quaternion[i];
+			}
+			average_pose.quaternion[i]/=marker_to_use;
+		}
+		std::cout<<"num marker to use:"<<marker_to_use<<std::endl;
+		std::cout<<"average pose:"<<std::endl;
+		std::cout<<average_pose.translation[0]<<" "<<average_pose.translation[1]<<" "<<average_pose.translation[2]<<" "<<std::endl;
+		std::cout<<average_pose.quaternion[0]<<" "<<average_pose.quaternion[1]<<" "<<average_pose.quaternion[2]<<" "<<average_pose.quaternion[3]<<" "<<std::endl;
+
 		double longest_distance_t=0;
 		double longest_distance_q=0;
 		int longestID=-1;
@@ -416,32 +434,6 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		}
 	}
 
-	//build distances for all markers, record the sum distance from one marker to all other markers
-	/*
-	vector<double> marker_distances_t;
-	vector<double> marker_distances_q;
-	marker_distances_t.resize(poses_all_markers.size());
-	marker_distances_q.reszie(poses_all_markers.size());
-	for(int i=0; i<poses_all_markers.size())
-	{	
-		for (int j=0; j<poses_all_markers.size(); j++)
-		{
-			if(i==j) continue;
-			for (int k=0; k<3; k++)
-			{
-				double diff=poses_all_markers[i].translation[k]-poses_all_markers[j].translation[k];
-				diff*=diff;
-				marker_distances_t[i]+=diff;
-			}
-			for (int k=0; k<4; k++)
-			{
-				double diff=poses_all_markers[i].quaternion[k]-poses_all_markers[j].quaternion[k];
-				diff*=diff;
-				marker_distances_q[i]+=diff;
-			}
-		}
-	}
-	*/
 	//loop markeriterator again
 	// Reset the marker_status to 1 for all markers in point_cloud
 	for (size_t i=0; i<marker_status.size(); i++) {
@@ -554,3 +546,4 @@ int MultiMarker::_SetTrackMarkers(MarkerDetectorImpl &marker_detector, Camera* c
 }
 
 }
+
