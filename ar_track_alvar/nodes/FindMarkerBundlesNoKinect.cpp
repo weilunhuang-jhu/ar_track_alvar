@@ -225,7 +225,7 @@ void getCapCallback (const sensor_msgs::ImageConstPtr & image_msg)
       for(int i=0; i<n_bundles; i++)
 	bundles_seen[i] = false;
   //debug
-  std::cout<<"==============="<<marker_detector.markers->size()<<" markers detected=============="<<std::endl;
+  //std::cout<<"==============="<<marker_detector.markers->size()<<" markers detected=============="<<std::endl;
 
       for (size_t i=0; i<marker_detector.markers->size(); i++)
 	{

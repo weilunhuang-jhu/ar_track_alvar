@@ -296,7 +296,8 @@ bool MultiMarker::IsValidMarker(int marker_id) {
 double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera* cam, Pose& pose, IplImage* image) {
 	vector<CvPoint3D64f> world_points;
 	vector<PointDouble>  image_points;
-
+	//debug
+	std::cout<<"=============================New Detection==========================="<<std::endl;
 	// Reset the marker_status to 1 for all markers in point_cloud
 	for (size_t i=0; i<marker_status.size(); i++) {
 		if (marker_status[i] > 0) marker_status[i]=1;
@@ -317,16 +318,13 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		vector<PointDouble>  image_points_per_marker;
 
 		// But only if we have corresponding points in the pointcloud
-		//debug
-		if (marker_status[index]==2) std::cout<<"====================duplicate marker==================="<<std::endl;
-		if (marker_status[index] > 0 &&marker_status[index]!=2)//debug
+		//debug// make robust decision to filter out duplicate marker 
+		if (marker_status[index]==2) std::cout<<"******************found duplicate marker****************"<<std::endl;
+		if (marker_status[index] > 0)//debug
 		{
 			for(size_t j = 0; j < marker->marker_corners.size(); ++j)
 			{
 				CvPoint3D64f Xnew = pointcloud[pointcloud_index(id, (int)j)];
-				world_points.push_back(Xnew);
-				image_points.push_back(marker->marker_corners_img.at(j));
-				if (image) cvCircle(image, cvPoint(int(marker->marker_corners_img[j].x), int(marker->marker_corners_img[j].y)), 3, CV_RGB(0,255,0));
 				//debug
 				world_points_per_marker.push_back(Xnew);
 				image_points_per_marker.push_back(marker->marker_corners_img.at(j));
@@ -343,10 +341,135 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 			pose_per_marker.SetRodriques(&rot_mat_per_marker);
 			pose_per_marker.SetTranslation(&tra_mat_per_marker);
 			poses_all_markers.push_back(pose_per_marker);
-//			std:cout<<"id:"<<id<<std::endl;
-//			std::cout<<"rotation:"<<std::endl;
-//			std::cout<<pose_per_marker.quaternion[0]<<" "<<pose_per_marker.quaternion[1]<<" "<<pose_per_marker.quaternion[2]<<" "<<pose_per_marker.quaternion[3]<<" "<<std::endl;
+			std:cout<<"id:"<<id<<std::endl;
+			std::cout<<pose_per_marker.translation[0]<<" "<<pose_per_marker.translation[1]<<" "<<pose_per_marker.translation[2]<<" "<<std::endl;
+			std::cout<<pose_per_marker.quaternion[0]<<" "<<pose_per_marker.quaternion[1]<<" "<<pose_per_marker.quaternion[2]<<" "<<pose_per_marker.quaternion[3]<<" "<<std::endl;
 		}
+	}
+	std::cout<<"-----"<<poses_all_markers.size()<<" of makers detected------"<<std::endl;
+
+	//find average pose
+	Pose average_pose;
+	//translation
+	for (int i=0; i<3; i++)
+	{
+		for(int j=0; j<poses_all_markers.size(); j++) average_pose.translation[i]+=poses_all_markers[j].translation[i];
+		average_pose.translation[i]/=poses_all_markers.size();
+	}
+	//quaternion
+	for (int i=0; i<4; i++)
+	{
+		//make quaternion to all zeros first
+		average_pose.quaternion[i]=0;
+		for(int j=0; j<poses_all_markers.size(); j++) average_pose.quaternion[i]+=poses_all_markers[j].quaternion[i];
+		average_pose.quaternion[i]/=poses_all_markers.size();
+	}
+	
+	//record bad detection
+	double trans_radius=5;
+	double quat_radius=0.5;
+	bool done=false;
+	vector<int> outlier_status;
+	outlier_status.resize(poses_all_markers.size());
+	while(!done)
+	{
+		double longest_distance_t=0;
+		double longest_distance_q=0;
+		int longestID=-1;
+		for(int i=0; i<poses_all_markers.size(); i++)
+		{
+			double distance_t=0;
+			double distance_q=0;		
+			for (int k=0; k<3; k++)
+			{
+				double diff=poses_all_markers[i].translation[k]-average_pose.translation[k];
+				diff*=diff;
+				distance_t+=diff;
+			}
+			for (int k=0; k<4; k++)
+			{
+				double diff=poses_all_markers[i].quaternion[k]-average_pose.quaternion[k];
+				diff*=diff;
+				distance_q+=diff;
+			}
+			if(outlier_status[i]==0)//go into check if the pose is not checked as outlier before
+			{
+				if (distance_t > trans_radius && distance_t> longest_distance_t)
+				{
+					longestID=i;
+					longest_distance_t=distance_t;
+				}
+				if (distance_q> quat_radius && distance_q>longest_distance_q)
+				{
+					longestID=i;
+					longest_distance_q=distance_q;
+				}
+			}
+		}
+		if (longestID<0) done=true;
+		else
+		{
+			outlier_status[longestID]=1;
+			std::cout<<"longest t:"<<longest_distance_t<<std::endl;
+			std::cout<<"longest q:"<<longest_distance_q<<std::endl;
+			std::cout<<"delete marker_iterator:"<<longestID<<std::endl;
+		}
+	}
+
+	//build distances for all markers, record the sum distance from one marker to all other markers
+	/*
+	vector<double> marker_distances_t;
+	vector<double> marker_distances_q;
+	marker_distances_t.resize(poses_all_markers.size());
+	marker_distances_q.reszie(poses_all_markers.size());
+	for(int i=0; i<poses_all_markers.size())
+	{	
+		for (int j=0; j<poses_all_markers.size(); j++)
+		{
+			if(i==j) continue;
+			for (int k=0; k<3; k++)
+			{
+				double diff=poses_all_markers[i].translation[k]-poses_all_markers[j].translation[k];
+				diff*=diff;
+				marker_distances_t[i]+=diff;
+			}
+			for (int k=0; k<4; k++)
+			{
+				double diff=poses_all_markers[i].quaternion[k]-poses_all_markers[j].quaternion[k];
+				diff*=diff;
+				marker_distances_q[i]+=diff;
+			}
+		}
+	}
+	*/
+	//loop markeriterator again
+	// Reset the marker_status to 1 for all markers in point_cloud
+	for (size_t i=0; i<marker_status.size(); i++) {
+		if (marker_status[i] > 0) marker_status[i]=1;
+	}
+	// For every detected marker
+	int k=0;
+	for (MarkerIterator &i = begin.reset(); i != end; ++i)
+	{
+		const Marker* marker = *i;
+		int id = marker->GetId();
+		
+		int index = get_id_index(id);
+		if (index < 0) continue;
+
+		// But only if we have corresponding points in the pointcloud
+		if (marker_status[index] > 0 and outlier_status[k]==0)//debug
+		{
+			for(size_t j = 0; j < marker->marker_corners.size(); ++j)
+			{
+				CvPoint3D64f Xnew = pointcloud[pointcloud_index(id, (int)j)];
+				world_points.push_back(Xnew);
+				image_points.push_back(marker->marker_corners_img.at(j));
+				if (image) cvCircle(image, cvPoint(int(marker->marker_corners_img[j].x), int(marker->marker_corners_img[j].y)), 3, CV_RGB(0,255,0));
+			}
+			marker_status[index] = 2; // Used for tracking
+		}
+		k++;
 	}
 	//debug
 	std::cout<<"num of points to calc:"<<world_points.size()<<std::endl;
@@ -363,7 +486,18 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	if (pose.translation[2]<0)
 	{
 		std::cout<<"!!!!!!!!!!!!!!!!!!!!watch out special case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<std::endl;
-		for (int axis=0; axis<3; axis++) pose.translation[axis]*=(-1.0);
+		std::cout<<"num of marker poses for special case:"<<poses_all_markers.size()<<std::endl;
+		//clear translation, calculate average translation from all markers
+		for (int axis=0; axis<3; axis++)
+		{
+			pose.translation[axis]=0;
+			for (int poseId=0; poseId<poses_all_markers.size(); poseId++)
+			{
+				pose.translation[axis]+=poses_all_markers[poseId].translation[axis];
+			}
+			pose.translation[axis]/=poses_all_markers.size();
+
+		}
 		//clear quaternions, calculate average quaternion from all markers
 		for (int axis=0; axis<4; axis++)
 		{
@@ -376,8 +510,9 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		}
 	}
 	//debug
-	//std::cout<<"bundle pose:"<<std::endl;
-	//std::cout<<pose.quaternion[0]<<" "<<pose.quaternion[1]<<" "<<pose.quaternion[2]<<" "<<pose.quaternion[3]<<" "<<std::endl;
+	std::cout<<"bundle pose:"<<std::endl;
+	std::cout<<pose.translation[0]<<" "<<pose.translation[1]<<" "<<pose.translation[2]<<" "<<std::endl;
+	std::cout<<pose.quaternion[0]<<" "<<pose.quaternion[1]<<" "<<pose.quaternion[2]<<" "<<pose.quaternion[3]<<" "<<std::endl;
 	return error;
 }
 
