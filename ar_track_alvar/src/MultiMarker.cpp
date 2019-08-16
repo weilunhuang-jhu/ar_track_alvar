@@ -302,6 +302,8 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	for (size_t i=0; i<marker_status.size(); i++) {
 		if (marker_status[i] > 0) marker_status[i]=1;
 	}
+	//debug, see if marker is an outlier or bad detection
+	vector<int> outlier_status;
 	//debug, poses for special case, to fix quaternions
 	vector<Pose> poses_all_markers;
 	// For every detected marker
@@ -343,7 +345,21 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 			poses_all_markers.push_back(pose_per_marker);
 			std:cout<<"id:"<<id<<std::endl;
 			std::cout<<pose_per_marker.translation[0]<<" "<<pose_per_marker.translation[1]<<" "<<pose_per_marker.translation[2]<<" "<<std::endl;
-			std::cout<<pose_per_marker.quaternion[0]<<" "<<pose_per_marker.quaternion[1]<<" "<<pose_per_marker.quaternion[2]<<" "<<pose_per_marker.quaternion[3]<<" "<<std::endl;
+			std::cout<<pose_per_marker.quaternion[1]<<" "<<pose_per_marker.quaternion[2]<<" "<<pose_per_marker.quaternion[3]<<" "<<pose_per_marker.quaternion[0]<<" "<<std::endl;
+			//check bad detection by checking the last element (2,2) in the rotation matrix
+			double rot_mat_temp[3][3];
+			CvMat rot_mat = cvMat(3,3,CV_64F, rot_mat_temp);
+			pose_per_marker.GetMatrix(&rot_mat);
+			
+			std::cout<<"Rotation:"<<std::endl;
+			for (int l=0; l<3; l++ )
+				{
+					for (int m=0; m<3; m++)
+					std::cout<<CV_MAT_ELEM(rot_mat, double, l,m)<<" ";
+					std::cout<<std::endl;
+				}
+			if (CV_MAT_ELEM(rot_mat, double, 2, 2)<0) outlier_status.push_back(0);
+			else outlier_status.push_back(1);
 		}
 	}
 	std::cout<<"-----"<<poses_all_markers.size()<<" of makers detected------"<<std::endl;
@@ -353,8 +369,6 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	double trans_radius=5;
 	double quat_radius=0.5;
 	bool done=false;
-	vector<int> outlier_status;
-	outlier_status.resize(poses_all_markers.size());
 	while(!done)
 	{
 		//find average pose of all markers to use
