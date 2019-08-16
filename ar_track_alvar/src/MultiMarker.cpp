@@ -31,6 +31,8 @@ using namespace std;
 namespace alvar {
 using namespace std;
 
+
+
 int MultiMarker::pointcloud_index(int marker_id, int marker_corner, bool add_if_missing /*=false*/) {
 	return (get_id_index(marker_id ,add_if_missing)*4)+marker_corner;
 }
@@ -294,6 +296,16 @@ bool MultiMarker::IsValidMarker(int marker_id) {
 
 
 double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera* cam, Pose& pose, IplImage* image) {
+	//previous pose
+	static Pose *Previous_Pose_ptr=nullptr;
+	//build world_points_per_marker_c_m (in individual marker coordinate)
+	vector<CvPoint3D64f> world_points_per_marker_m;
+	world_points_per_marker_m.resize(4);
+	world_points_per_marker_m[0]=cvPoint3D64f(-5.0 , -5.0, 0);
+	world_points_per_marker_m[1]=cvPoint3D64f(5.0 , -5.0, 0);
+	world_points_per_marker_m[2]=cvPoint3D64f(5.0 , 5.0, 0);
+	world_points_per_marker_m[3]=cvPoint3D64f(-5.0 , 5.0, 0);
+
 	vector<CvPoint3D64f> world_points;
 	vector<PointDouble>  image_points;
 	//debug
@@ -315,8 +327,9 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		int index = get_id_index(id);
 		if (index < 0) continue;
 		//debug
-		Pose pose_per_marker;
-		vector<CvPoint3D64f> world_points_per_marker;
+		Pose center_pose_per_marker;//pose of bundle center inferred by one marker
+		Pose pose_per_marker;//poes of marker
+		vector<CvPoint3D64f> world_points_per_marker_c;//in bundle center coordinate
 		vector<PointDouble>  image_points_per_marker;
 
 		// But only if we have corresponding points in the pointcloud
@@ -324,33 +337,48 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		if (marker_status[index]==2) std::cout<<"******************found duplicate marker****************"<<std::endl;
 		if (marker_status[index] > 0)//debug
 		{
+			
 			for(size_t j = 0; j < marker->marker_corners.size(); ++j)
 			{
 				CvPoint3D64f Xnew = pointcloud[pointcloud_index(id, (int)j)];
 				//debug
-				world_points_per_marker.push_back(Xnew);
+				world_points_per_marker_c.push_back(Xnew);
 				image_points_per_marker.push_back(marker->marker_corners_img.at(j));
 			}
 			marker_status[index] = 2; // Used for tracking
 		}
 		//debug
+		double center_rod_per_marker[3], center_tra_per_marker[3];
+		CvMat center_rot_mat_per_marker = cvMat(3, 1,CV_64F, center_rod_per_marker);
+		CvMat center_tra_mat_per_marker = cvMat(3, 1,CV_64F, center_tra_per_marker);
+		
 		double rod_per_marker[3], tra_per_marker[3];
 		CvMat rot_mat_per_marker = cvMat(3, 1,CV_64F, rod_per_marker);
 		CvMat tra_mat_per_marker = cvMat(3, 1,CV_64F, tra_per_marker);
-		if (world_points_per_marker.size()>3)
+		
+		if (world_points_per_marker_c.size()>3)
 		{
-			cam->CalcExteriorOrientation(world_points_per_marker, image_points_per_marker, &rot_mat_per_marker, &tra_mat_per_marker);
+			cam->CalcExteriorOrientation(world_points_per_marker_c, image_points_per_marker, &center_rot_mat_per_marker, &center_tra_mat_per_marker);
+			center_pose_per_marker.SetRodriques(&center_rot_mat_per_marker);
+			center_pose_per_marker.SetTranslation(&center_tra_mat_per_marker);
+			poses_all_markers.push_back(center_pose_per_marker);
+			
+			cam->CalcExteriorOrientation(world_points_per_marker_m, image_points_per_marker, &rot_mat_per_marker, &tra_mat_per_marker);
 			pose_per_marker.SetRodriques(&rot_mat_per_marker);
 			pose_per_marker.SetTranslation(&tra_mat_per_marker);
-			poses_all_markers.push_back(pose_per_marker);
+			
+			//debug
 			std:cout<<"id:"<<id<<std::endl;
-			std::cout<<pose_per_marker.translation[0]<<" "<<pose_per_marker.translation[1]<<" "<<pose_per_marker.translation[2]<<" "<<std::endl;
-			std::cout<<pose_per_marker.quaternion[1]<<" "<<pose_per_marker.quaternion[2]<<" "<<pose_per_marker.quaternion[3]<<" "<<pose_per_marker.quaternion[0]<<" "<<std::endl;
+			//std::cout<<center_pose_per_marker.translation[0]<<" "<<center_pose_per_marker.translation[1]<<" "<<center_pose_per_marker.translation[2]<<" "<<std::endl;
+			//std::cout<<center_pose_per_marker.quaternion[1]<<" "<<center_pose_per_marker.quaternion[2]<<" "<<center_pose_per_marker.quaternion[3]<<" "<<center_pose_per_marker.quaternion[0]<<" "<<std::endl;
+			
 			//check bad detection by checking the last element (2,2) in the rotation matrix
 			double rot_mat_temp[3][3];
 			CvMat rot_mat = cvMat(3,3,CV_64F, rot_mat_temp);
 			pose_per_marker.GetMatrix(&rot_mat);
 			
+			std::cout<<pose_per_marker.translation[0]<<" "<<pose_per_marker.translation[1]<<" "<<pose_per_marker.translation[2]<<" "<<std::endl;
+			//std::cout<<center_pose_per_marker.quaternion[1]<<" "<<center_pose_per_marker.quaternion[2]<<" "<<center_pose_per_marker.quaternion[3]<<" "<<center_pose_per_marker.quaternion[0]<<" "<<std::endl;
 			std::cout<<"Rotation:"<<std::endl;
 			for (int l=0; l<3; l++ )
 				{
@@ -360,6 +388,8 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 				}
 			if (CV_MAT_ELEM(rot_mat, double, 2, 2)<0) outlier_status.push_back(0);
 			else outlier_status.push_back(1);
+			//outlier_status.push_back(0);
+
 		}
 	}
 	std::cout<<"-----"<<poses_all_markers.size()<<" of makers detected------"<<std::endl;
@@ -374,11 +404,19 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		//find average pose of all markers to use
 		Pose average_pose;
 		int marker_to_use=0;
+
+		if (Previous_Pose_ptr!=nullptr)
+		{
+			average_pose=*Previous_Pose_ptr;
+			marker_to_use++;
+			std::cout<<"previous pose is NOT null."<<std::endl;
+		}
+		
 		//translation
 		for (int i=0; i<3; i++)
 		{
 			//make translation to all zeros first
-			average_pose.translation[i]=0;
+			if(Previous_Pose_ptr==nullptr) average_pose.translation[i]=0;
 			for(int j=0; j<poses_all_markers.size(); j++)
 			{
 				if (outlier_status[j]==0)
@@ -393,7 +431,7 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		for (int i=0; i<4; i++)
 		{
 			//make quaternion to all zeros first
-			average_pose.quaternion[i]=0;
+			if(Previous_Pose_ptr==nullptr) average_pose.quaternion[i]=0;
 			for(int j=0; j<poses_all_markers.size(); j++)
 			{	
 				if (outlier_status[j]==0) average_pose.quaternion[i]+=poses_all_markers[j].quaternion[i];
@@ -403,7 +441,8 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 		std::cout<<"num marker to use:"<<marker_to_use<<std::endl;
 		std::cout<<"average pose:"<<std::endl;
 		std::cout<<average_pose.translation[0]<<" "<<average_pose.translation[1]<<" "<<average_pose.translation[2]<<" "<<std::endl;
-		std::cout<<average_pose.quaternion[0]<<" "<<average_pose.quaternion[1]<<" "<<average_pose.quaternion[2]<<" "<<average_pose.quaternion[3]<<" "<<std::endl;
+		std::cout<<average_pose.quaternion[1]<<" "<<average_pose.quaternion[2]<<" "<<average_pose.quaternion[3]<<" "<<average_pose.quaternion[0]<<" "<<std::endl;
+		
 
 		double longest_distance_t=0;
 		double longest_distance_q=0;
@@ -479,8 +518,12 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 	}
 	//debug
 	std::cout<<"num of points to calc:"<<world_points.size()<<std::endl;
-	if (world_points.size() < 4) return -1;
-
+	if (world_points.size() < 4) 
+	{
+		std::cout<<"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"<<std::endl;
+		Previous_Pose_ptr=nullptr;
+		return -1;
+	}
 	double rod[3], tra[3];
 	CvMat rot_mat = cvMat(3, 1,CV_64F, rod);
 	CvMat tra_mat = cvMat(3, 1,CV_64F, tra);
@@ -515,7 +558,7 @@ double MultiMarker::_GetPose(MarkerIterator &begin, MarkerIterator &end, Camera*
 			pose.quaternion[axis]/=poses_all_markers.size();
 		}
 	}
-	//debug
+	Previous_Pose_ptr=&pose;
 	std::cout<<"bundle pose:"<<std::endl;
 	std::cout<<pose.translation[0]<<" "<<pose.translation[1]<<" "<<pose.translation[2]<<" "<<std::endl;
 	std::cout<<pose.quaternion[0]<<" "<<pose.quaternion[1]<<" "<<pose.quaternion[2]<<" "<<pose.quaternion[3]<<" "<<std::endl;
